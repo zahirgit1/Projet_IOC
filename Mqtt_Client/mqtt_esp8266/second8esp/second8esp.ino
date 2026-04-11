@@ -30,7 +30,7 @@ const char* mqtt_server = "10.255.70.67";
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
-#define MSG_BUFFER_SIZE	(50)
+#define MSG_BUFFER_SIZE  (50)
 char msg[MSG_BUFFER_SIZE];
 int value = 0;
 
@@ -99,28 +99,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
-  if (String(topic) == "ESP32/4"){
-    Serial.print("now low");
-      // Switch on the LED if an 1 was received as first character
-      if ((char)payload[0] == '1') {
-        digitalWrite(BUILTIN_LED, LOW);// Turn the LED on (Note that LOW is the voltage level
-        Serial.print("now low");
-        // but actually the LED is on; this is because
-        // it is active low on the ESP-01)
-      } else {
-        digitalWrite(BUILTIN_LED, HIGH);  // Turn the LED off by making the voltage HIGH
-      }
-  }
-  else {
-          // Switch on the LED if an 1 was received as first character
-      if ((char)payload[0] == '1') {
-        active=0;   // Turn the LED on (Note that LOW is the voltage level
-        // but actually the LED is on; this is because
-        // it is active low on the ESP-01)
-      } else {
-        active = 1;  // Turn the LED off by making the voltage HIGH
-      }
-  }
+
 
 }
 
@@ -137,8 +116,7 @@ void reconnect() {
       // Once connected, publish an announcement...
       //client.publish("outTopic", "hello world");
       // ... and resubscribe
-      client.subscribe("ESP32/4");
-      client.subscribe("ESP32/5");
+      client.subscribe("outTopic");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
