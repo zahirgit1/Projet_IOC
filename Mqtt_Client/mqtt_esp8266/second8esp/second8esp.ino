@@ -25,7 +25,7 @@
 
 const char* ssid = "Zahir Sami's S23 Ultra";
 const char* password = "Zahir2003";
-const char* mqtt_server = "10.255.70.67";
+const char* mqtt_server = "10.35.31.67";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
