@@ -4,7 +4,7 @@
 // Update these with your settings
 const char* ssid = "Zahir Sami's S23 Ultra";
 const char* password = "Zahir2003";
-const char* mqtt_server = "10.35.31.67"; // A free public broker
+const char* mqtt_server = "10.192.10.67"; // A free public broker
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -23,6 +23,10 @@ FreezeAttack freezeMagic(display, 8);
 LightAttack lightMagic(display, 12);
 WiFiClient espClient;
 PubSubClient client(espClient);
+unsigned long lastMsg = 0;
+#define MSG_BUFFER_SIZE  (50)
+char msg[MSG_BUFFER_SIZE];
+int value = 0;
 
 volatile byte active;
 struct ctx_led_t {
@@ -88,6 +92,7 @@ void reconnect() {
       client.publish("outTopic", "hello world");
       // ... and resubscribe
       client.subscribe("inTopic");
+      client.subscribe("Attack_log");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -101,6 +106,7 @@ void setup() {
   Serial.begin(115200);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
+  //client.setCallback(callback);
   Wire.begin(4, 15);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     for(;;);
@@ -124,12 +130,16 @@ void loop() {
       activeAttack->drawProjectile();
   } 
   else if (currentState == ATTACK_IMPACTING) {
-      activeAttack->drawImpact();
+      
+      
+      
       // You can add screen shakes or delay tricks here since YOU control it!
   } 
   else if (currentState == ATTACK_DONE) {
       // Switch attacks just to see both working!
       if (activeAttack == &lightMagic) {
+         client.publish("Attack_log","1");
+         Serial.println("attack");
           activeAttack = &freezeMagic;
       } else {
           activeAttack = &lightMagic;

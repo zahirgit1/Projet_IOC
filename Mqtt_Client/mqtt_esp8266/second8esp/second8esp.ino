@@ -20,12 +20,25 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "AttackAnimation.h"
 
 // Update these with values suitable for your network.
 
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET 16
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+AttackAnimation* activeAttack;
+FreezeAttack freezeMagic(display, 8);
+LightAttack lightMagic(display, 12);
+
 const char* ssid = "Zahir Sami's S23 Ultra";
 const char* password = "Zahir2003";
-const char* mqtt_server = "10.35.31.67";
+const char* mqtt_server = "10.192.10.67";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -99,8 +112,20 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
+  if (String(topic) == "Attack_log"){
+    Serial.print("attacked !!");
+      // Switch on the LED if an 1 was received as first character
+      if ((char)payload[0] == '1') {
+          activeAttack->drawImpact();
+          client.publish("outTopic","ahhhh");
+          if (activeAttack == &lightMagic) {
+              activeAttack = &freezeMagic;
+          } else {
+              activeAttack = &lightMagic;
+          }
+      }
 
-
+  }
 }
 
 void reconnect() {
@@ -116,7 +141,8 @@ void reconnect() {
       // Once connected, publish an announcement...
       //client.publish("outTopic", "hello world");
       // ... and resubscribe
-      client.subscribe("outTopic");
+     // client.subscribe("outTopic");
+      client.subscribe("Attack_log");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -134,6 +160,10 @@ void setup() {
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    for(;;);
+  }
+  activeAttack = &lightMagic;
 }
 
 void loop() {
@@ -144,13 +174,5 @@ void loop() {
   client.loop();
   step_buz(&buz);
 
-  unsigned long now = millis();
-  if (now - lastMsg > 2000) {
-    lastMsg = now;
-    ++value;
-    snprintf (msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
-    Serial.print("Publish message: ");
-    Serial.println(msg);
-    client.publish("outTopic", msg);
-  }
+
 }
