@@ -116,7 +116,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print("attacked !!");
       // Switch on the LED if an 1 was received as first character
       if ((char)payload[0] == '1') {
-          activeAttack->drawImpact();
+          for(int i=0;i<15;i++){          activeAttack->drawImpact();
+          display.display();}
+ 
+
           client.publish("outTopic","ahhhh");
           if (activeAttack == &lightMagic) {
               activeAttack = &freezeMagic;
@@ -160,6 +163,8 @@ void setup() {
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+  Wire.begin(4,15);
+  
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     for(;;);
   }
@@ -173,6 +178,8 @@ void loop() {
   }
   client.loop();
   step_buz(&buz);
+  display.clearDisplay();
+  
 
 
 }

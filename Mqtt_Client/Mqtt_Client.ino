@@ -135,11 +135,12 @@ void loop() {
       
       // You can add screen shakes or delay tricks here since YOU control it!
   } 
-  else if (currentState == ATTACK_DONE) {
+  else if (currentState == ATTACK_DONE ) {
       // Switch attacks just to see both working!
+             client.publish("Attack_log","1");
+       Serial.println("attack");
       if (activeAttack == &lightMagic) {
-         client.publish("Attack_log","1");
-         Serial.println("attack");
+
           activeAttack = &freezeMagic;
       } else {
           activeAttack = &lightMagic;
