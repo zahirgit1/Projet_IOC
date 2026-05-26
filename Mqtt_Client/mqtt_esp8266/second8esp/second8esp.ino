@@ -112,16 +112,16 @@ void step_button(struct ctx_led_t * button) {
                   Serial.println("freeze !!!");
               }
             }
-    button_pressed = 1;                    // ecriture
-    Serial.println("+1");
-    }                             // changement d'état
+    button_pressed = 1;                    
+    Serial.println("+1");// validation de l'appui sur le bouton
+    }                             
 }
 void step_buz(struct ctx_led_t * buz) {
   if (!waitFor(buz->timer, buz->period) ) return;// sort s'il y a moins d'une période écoulée
   if (!active) buz->etat =0;// mets le buzzer a zero tant que le flag active n'est pas a 1
          
-  digitalWrite(buz->pin, buz->etat);                      // ecriture
-  buz->etat = 1 - buz->etat;                              // changement d'état
+  digitalWrite(buz->pin, buz->etat);                      
+  buz->etat = 1 - buz->etat;                              
 }
 // This function connects the ESP32 to your WiFi
 void setup_wifi() {
@@ -149,7 +149,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
     if (String(topic) == "ESP32/zap"){
-      // Switch on the LED if an 1 was received as first character
       if ((char)payload[0] == '1') {
         current = 1;
       } else {

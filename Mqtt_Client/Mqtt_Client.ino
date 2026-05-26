@@ -102,7 +102,6 @@ void step_button(struct ctx_led_t * button) {
 
         }
             if (currentState == ATTACK_DONE ) {
-              // Switch attacks just to see both working!
 
               if (activeAttack == &lightMagic) {
                   client.publish("Attack_zap_1","1");
@@ -112,9 +111,9 @@ void step_button(struct ctx_led_t * button) {
                   Serial.println("freeze !!!");
               }
             }
-    button_pressed = 1;                    // ecriture
-    Serial.println("+1");
-    }                             // changement d'état
+    button_pressed = 1;                    
+    Serial.println("+1");// validation de l'appui sur le bouton
+    }                             
 }
 void step_buz(struct ctx_led_t * buz) {
   if (!waitFor(buz->timer, buz->period) ) return;// sort s'il y a moins d'une période écoulée
@@ -149,11 +148,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
     if (String(topic) == "ESP32/freeze"){
-      // Switch on the LED if an 1 was received as first character
+
       if ((char)payload[0] == '1') {
-        current = 1;
+        current = 1; // Set the flag to indicate the freeze attack is active
       } else {
-        current = 0;  
+        current = 0;  // Reset the flag to indicate the freeze attack is not active
       }
   }
   if (String(topic) == "Attack_freeze_2"){
@@ -194,7 +193,7 @@ void reconnect() {
     // Attempt to connect
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
-      // Once connected, publish an announcement...
+
       client.subscribe("inTopic");
       client.subscribe("Attack_log");
       client.subscribe("Attack_zap_1");
