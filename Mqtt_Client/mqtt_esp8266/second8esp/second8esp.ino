@@ -1,55 +1,36 @@
-/*
- Basic ESP8266 MQTT example
- This sketch demonstrates the capabilities of the pubsub library in combination
- with the ESP8266 board/library.
- It connects to an MQTT server then:
-  - publishes "hello world" to the topic "outTopic" every two seconds
-  - subscribes to the topic "inTopic", printing out any messages
-    it receives. NB - it assumes the received payloads are strings not binary
-  - If the first character of the topic "inTopic" is an 1, switch ON the ESP Led,
-    else switch it off
- It will reconnect to the server if the connection is lost using a blocking
- reconnect function. See the 'mqtt_reconnect_nonblocking' example for how to
- achieve the same result without blocking the main loop.
- To install the ESP8266 board, (using Arduino 1.6.4+):
-  - Add the following 3rd party board manager under "File -> Preferences -> Additional Boards Manager URLs":
-       http://arduino.esp8266.com/stable/package_esp8266com_index.json
-  - Open the "Tools -> Board -> Board Manager" and click install for the ESP8266"
-  - Select your ESP8266 in "Tools -> Board"
-*/
-
 #include <WiFi.h>
 #include <PubSubClient.h>
+#define buzzer 17
+// Update these with your settings
+const char* ssid = "Zahir Sami's S23 Ultra";
+const char* password = "Zahir2003";
+const char* mqtt_server = "10.92.174.67"; // A free public broker
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "AttackAnimation.h"
 
-// Update these with values suitable for your network.
 
+AttackAnimation* activeAttack;
+AttackAnimation* Attacked;
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
 #define OLED_RESET 16
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-AttackAnimation* activeAttack;
+volatile byte active, button_pressed;
+
+// Create instances of your subclasses!
 FreezeAttack freezeMagic(display, 8);
 LightAttack lightMagic(display, 12);
-
-const char* ssid = "Zahir Sami's S23 Ultra";
-const char* password = "Zahir2003";
-const char* mqtt_server = "10.192.10.67";
-
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
 #define MSG_BUFFER_SIZE  (50)
 char msg[MSG_BUFFER_SIZE];
+int current =0 ;
 int value = 0;
 
-
-volatile byte active;
-#define buzzer 17
 struct ctx_led_t {
   int timer;                                              // n° du timer pour cette tâche utilisé par WaitFor
   unsigned long period;                                   // periode de clignotement
@@ -57,7 +38,7 @@ struct ctx_led_t {
   int etat;  // etat interne de la led
 }  ;
 
-#define MAX_WAIT_FOR_TIMER 1
+#define MAX_WAIT_FOR_TIMER 2
 unsigned long waitFor(int timer, unsigned long period) {
   static unsigned long last_period[MAX_WAIT_FOR_TIMER];  // il y a autant de timers que de tâches
   unsigned long current = micros() / period;             // numéro de période
@@ -73,6 +54,68 @@ void init_buz(struct ctx_led_t * buz, int timer, unsigned long period, byte pin)
   pinMode(pin, OUTPUT);
   digitalWrite(pin, buz->etat);
 }
+void  init_button(struct ctx_led_t * button, int timer, unsigned long period, byte pin)
+{
+  button_pressed = 0;//variable pour traiter un appui une seule fois
+  pinMode(pin, INPUT_PULLUP);//init de la resistance pull up
+  button->timer = timer;
+  button->period = period ;
+  button->pin = pin;
+  button->etat = digitalRead(button->pin);
+}
+void step_button(struct ctx_led_t * button) {
+  if (!waitFor(button->timer, button->period)  ) return;// sort s'il y a moins d'une période écoulée
+  button->etat = digitalRead(button->pin);
+  if ((button->etat == HIGH) ) {button_pressed = 0;return;  }  // flag pour verifier qu'on traite l'appui qu'une seule fois   
+  if(!(button->etat == HIGH) and !button_pressed) 
+    {   
+       
+        if (current ==0)
+        {
+          activeAttack = &freezeMagic;
+        }
+        else { 
+          activeAttack = &lightMagic;}
+
+        activeAttack->start(SCREEN_HEIGHT / 2);
+            // 1. Calculate the math
+           display.clearDisplay();
+        AttackState currentState = activeAttack->update();
+
+        // 2. You control the drawing based on the state!
+        while(currentState != ATTACK_DONE){
+          
+            if (currentState == ATTACK_MOVING) {
+                activeAttack->drawProjectile();
+                currentState = activeAttack->update();
+            } 
+            else if (currentState == ATTACK_IMPACTING) {
+                
+                currentState = activeAttack->update();
+          // You can add screen shakes or delay tricks here since YOU control it!
+            } 
+            
+            display.display();
+            //delay(15);
+            display.clearDisplay();
+            
+
+        }
+            if (currentState == ATTACK_DONE ) {
+              // Switch attacks just to see both working!
+
+              if (activeAttack == &lightMagic) {
+                  client.publish("Attack_zap_2","1");
+                  Serial.println("zap !!!");
+              } else {
+                 client.publish("Attack_freeze_2","1");
+                  Serial.println("freeze !!!");
+              }
+            }
+    button_pressed = 1;                    // ecriture
+    Serial.println("+1");
+    }                             // changement d'état
+}
 void step_buz(struct ctx_led_t * buz) {
   if (!waitFor(buz->timer, buz->period) ) return;// sort s'il y a moins d'une période écoulée
   if (!active) buz->etat =0;// mets le buzzer a zero tant que le flag active n'est pas a 1
@@ -80,15 +123,13 @@ void step_buz(struct ctx_led_t * buz) {
   digitalWrite(buz->pin, buz->etat);                      // ecriture
   buz->etat = 1 - buz->etat;                              // changement d'état
 }
+// This function connects the ESP32 to your WiFi
 void setup_wifi() {
-
   delay(10);
-  // We start by connecting to a WiFi network
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
-  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -96,14 +137,9 @@ void setup_wifi() {
     Serial.print(".");
   }
 
-  randomSeed(micros());
-
   Serial.println("");
   Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
 }
-
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -112,74 +148,96 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
-  if (String(topic) == "Attack_log"){
-    Serial.print("attacked !!");
+    if (String(topic) == "ESP32/zap"){
       // Switch on the LED if an 1 was received as first character
       if ((char)payload[0] == '1') {
-          for(int i=0;i<15;i++){          activeAttack->drawImpact();
-          display.display();}
- 
-
-          client.publish("outTopic","ahhhh");
-          if (activeAttack == &lightMagic) {
-              activeAttack = &freezeMagic;
-          } else {
-              activeAttack = &lightMagic;
-          }
+        current = 1;
+      } else {
+        current = 0;  
+      }
+  }
+  if (String(topic) == "Attack_freeze_1"){
+    Serial.print("froze !!!!");
+    Attacked = &freezeMagic;
+      if ((char)payload[0] == '1') {
+          for(int i=0;i<15;i++){   
+          Attacked->drawImpact();
+          display.display();
+          display.clearDisplay();}
       }
 
   }
+  if (String(topic) == "Attack_zap_1"){
+    Serial.print("zapped !!");
+    Attacked = &lightMagic;
+      if ((char)payload[0] == '1') {
+          for(int i=0;i<15;i++){   
+          Attacked->drawImpact();
+          display.display();
+          display.clearDisplay();}
+
+      }
+  }
+
+
+  
 }
 
+// This function handles reconnecting to the MQTT broker if you lose connection
 void reconnect() {
-  // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Create a random client ID
     String clientId = "ESP32Client-";
     clientId += String(random(0xffff), HEX);
+    
     // Attempt to connect
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      //client.publish("outTopic", "hello world");
-      // ... and resubscribe
-     // client.subscribe("outTopic");
+      client.subscribe("inTopic");
       client.subscribe("Attack_log");
+      client.subscribe("Attack_zap_1");
+      client.subscribe("Attack_freeze_1");
+      client.subscribe("Attack_zap_2");
+      client.subscribe("Attack_freeze_2");
+      client.subscribe("ESP32/freeze");
+      client.subscribe("ESP32/zap");
+      client.subscribe("ESP32/5");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
       delay(5000);
     }
   }
 }
-ctx_led_t buz;
+ctx_led_t button;
 void setup() {
-  pinMode(BUILTIN_LED, OUTPUT);// Initialize the BUILTIN_LED pin as an output
-  init_buz(&buz,0,500,buzzer);
   Serial.begin(115200);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-  Wire.begin(4,15);
-  
-    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    init_button(&button,3,500,23);
+  Wire.begin(4, 15);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     for(;;);
   }
-  activeAttack = &lightMagic;
+
+  
+
 }
 
 void loop() {
-
   if (!client.connected()) {
     reconnect();
   }
-  client.loop();
-  step_buz(&buz);
+  client.loop(); // This processes incoming messages and maintains the connection
   display.clearDisplay();
+  step_button(&button);
+
   
 
+  
 
 }

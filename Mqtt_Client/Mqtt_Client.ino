@@ -4,7 +4,7 @@
 // Update these with your settings
 const char* ssid = "Zahir Sami's S23 Ultra";
 const char* password = "Zahir2003";
-const char* mqtt_server = "10.192.10.67"; // A free public broker
+const char* mqtt_server = "10.92.174.67"; // A free public broker
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -13,10 +13,12 @@ const char* mqtt_server = "10.192.10.67"; // A free public broker
 
 
 AttackAnimation* activeAttack;
+AttackAnimation* Attacked;
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
 #define OLED_RESET 16
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+volatile byte active, button_pressed;
 
 // Create instances of your subclasses!
 FreezeAttack freezeMagic(display, 8);
@@ -26,9 +28,9 @@ PubSubClient client(espClient);
 unsigned long lastMsg = 0;
 #define MSG_BUFFER_SIZE  (50)
 char msg[MSG_BUFFER_SIZE];
+int current =0 ;
 int value = 0;
 
-volatile byte active;
 struct ctx_led_t {
   int timer;                                              // n° du timer pour cette tâche utilisé par WaitFor
   unsigned long period;                                   // periode de clignotement
@@ -36,7 +38,7 @@ struct ctx_led_t {
   int etat;  // etat interne de la led
 }  ;
 
-#define MAX_WAIT_FOR_TIMER 1
+#define MAX_WAIT_FOR_TIMER 2
 unsigned long waitFor(int timer, unsigned long period) {
   static unsigned long last_period[MAX_WAIT_FOR_TIMER];  // il y a autant de timers que de tâches
   unsigned long current = micros() / period;             // numéro de période
@@ -51,6 +53,68 @@ void init_buz(struct ctx_led_t * buz, int timer, unsigned long period, byte pin)
   buz->etat = 0;
   pinMode(pin, OUTPUT);
   digitalWrite(pin, buz->etat);
+}
+void  init_button(struct ctx_led_t * button, int timer, unsigned long period, byte pin)
+{
+  button_pressed = 0;//variable pour traiter un appui une seule fois
+  pinMode(pin, INPUT_PULLUP);//init de la resistance pull up
+  button->timer = timer;
+  button->period = period ;
+  button->pin = pin;
+  button->etat = digitalRead(button->pin);
+}
+void step_button(struct ctx_led_t * button) {
+  if (!waitFor(button->timer, button->period)  ) return;// sort s'il y a moins d'une période écoulée
+  button->etat = digitalRead(button->pin);
+  if ((button->etat == HIGH) ) {button_pressed = 0;return;  }  // flag pour verifier qu'on traite l'appui qu'une seule fois   
+  if(!(button->etat == HIGH) and !button_pressed) 
+    {   
+       
+        if (current ==0)
+        {
+          activeAttack = &freezeMagic;
+        }
+        else { 
+          activeAttack = &lightMagic;}
+
+        activeAttack->start(SCREEN_HEIGHT / 2);
+            // 1. Calculate the math
+           display.clearDisplay();
+        AttackState currentState = activeAttack->update();
+
+        // 2. You control the drawing based on the state!
+        while(currentState != ATTACK_DONE){
+          
+            if (currentState == ATTACK_MOVING) {
+                activeAttack->drawProjectile();
+                currentState = activeAttack->update();
+            } 
+            else if (currentState == ATTACK_IMPACTING) {
+                
+                currentState = activeAttack->update();
+          // You can add screen shakes or delay tricks here since YOU control it!
+            } 
+            
+            display.display();
+            //delay(15);
+            display.clearDisplay();
+            
+
+        }
+            if (currentState == ATTACK_DONE ) {
+              // Switch attacks just to see both working!
+
+              if (activeAttack == &lightMagic) {
+                  client.publish("Attack_zap_1","1");
+                  Serial.println("zap !!!");
+              } else {
+                 client.publish("Attack_freeze_1","1");
+                  Serial.println("freeze !!!");
+              }
+            }
+    button_pressed = 1;                    // ecriture
+    Serial.println("+1");
+    }                             // changement d'état
 }
 void step_buz(struct ctx_led_t * buz) {
   if (!waitFor(buz->timer, buz->period) ) return;// sort s'il y a moins d'une période écoulée
@@ -76,6 +140,48 @@ void setup_wifi() {
   Serial.println("");
   Serial.println("WiFi connected");
 }
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+    if (String(topic) == "ESP32/freeze"){
+      // Switch on the LED if an 1 was received as first character
+      if ((char)payload[0] == '1') {
+        current = 1;
+      } else {
+        current = 0;  
+      }
+  }
+  if (String(topic) == "Attack_freeze_2"){
+    Serial.print("froze !!!!");
+    Attacked = &freezeMagic;
+      if ((char)payload[0] == '1') {
+          for(int i=0;i<15;i++){   
+          Attacked->drawImpact();
+          display.display();
+          display.clearDisplay();}
+      }
+
+  }
+  if (String(topic) == "Attack_zap_2"){
+    Serial.print("zapped !!");
+    Attacked = &lightMagic;
+      if ((char)payload[0] == '1') {
+          for(int i=0;i<15;i++){   
+          Attacked->drawImpact();
+          display.display();
+          display.clearDisplay();}
+
+      }
+  }
+
+
+  
+}
 
 // This function handles reconnecting to the MQTT broker if you lose connection
 void reconnect() {
@@ -89,10 +195,15 @@ void reconnect() {
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("outTopic", "hello world");
-      // ... and resubscribe
       client.subscribe("inTopic");
       client.subscribe("Attack_log");
+      client.subscribe("Attack_zap_1");
+      client.subscribe("Attack_freeze_1");
+      client.subscribe("Attack_zap_2");
+      client.subscribe("Attack_freeze_2");
+      client.subscribe("ESP32/freeze");
+      client.subscribe("ESP32/zap");
+      client.subscribe("ESP32/5");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -101,18 +212,20 @@ void reconnect() {
     }
   }
 }
-
+ctx_led_t button;
 void setup() {
   Serial.begin(115200);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
-  //client.setCallback(callback);
+  client.setCallback(callback);
+    init_button(&button,3,500,23);
   Wire.begin(4, 15);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     for(;;);
   }
-  activeAttack = &lightMagic;
-  activeAttack->start(SCREEN_HEIGHT / 2); 
+
+  
+
 }
 
 void loop() {
@@ -120,35 +233,7 @@ void loop() {
     reconnect();
   }
   client.loop(); // This processes incoming messages and maintains the connection
-    display.clearDisplay();
-
-  // 1. Calculate the math
-  AttackState currentState = activeAttack->update();
-
-  // 2. You control the drawing based on the state!
-  if (currentState == ATTACK_MOVING) {
-      activeAttack->drawProjectile();
-  } 
-  else if (currentState == ATTACK_IMPACTING) {
-      
-      
-      
-      // You can add screen shakes or delay tricks here since YOU control it!
-  } 
-  else if (currentState == ATTACK_DONE ) {
-      // Switch attacks just to see both working!
-             client.publish("Attack_log","1");
-       Serial.println("attack");
-      if (activeAttack == &lightMagic) {
-
-          activeAttack = &freezeMagic;
-      } else {
-          activeAttack = &lightMagic;
-      }
-      delay(1500); // Pause before next attack
-      activeAttack->start(SCREEN_HEIGHT / 2);
-  }
-
-  display.display();
+  display.clearDisplay();
+  step_button(&button);
 
 }
